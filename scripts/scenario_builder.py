@@ -1,5 +1,6 @@
 from brownie import (
-    Contract, network, accounts, OverlayV1Token, TestMintRouter
+    Contract, network, accounts, OverlayV1Token, TestMintRouter,
+    OverlayV1UniswapV3Factory, OverlayV1Factory
 )
 from web3 import Web3
 from brownie_tokens import MintableForkToken
@@ -57,7 +58,7 @@ def main():
     pool_abi = json_load('pool_abi')
     pool = Contract.from_abi('pool', pool_add, pool_abi)
     pool.initialize(7.9220240490215315e28, {"from": alice})  # price ~= 1
-    pool.increaseObservationCardinalityNext(510, {"from": alice})
+    pool.increaseObservationCardinalityNext(610, {"from": alice})
     mint_router = alice.deploy(TestMintRouter)
     liquidity = 1e18
     lp(alice, pool, ovl, usdc, mint_router, liquidity, True)
@@ -65,5 +66,24 @@ def main():
     swap(alice, pool, mint_router, False, swap_amount)
 
     # Deploy Overlay Feed Factory, Feed, Factory
+    feed_factory = gov_overlay.deploy(OverlayV1UniswapV3Factory, ovl,
+                                      uni_factory, 600, 3600, 600, 12)
+
+    market_base_token = ovl
+    market_quote_token = usdc
+    ovlX_base_token = usdc
+    ovlX_quote_token = ovl
+    market_fee = 3000
+    market_base_amount = 1000000000000000000  # 1e18
+    feed_factory.deployFeed(market_base_token, market_quote_token,
+                            market_fee, market_base_amount, ovlX_base_token,
+                            ovlX_quote_token, market_fee)
+
+    factory = gov_overlay.deploy(OverlayV1Factory, ovl, gov_overlay)
+    ovl.grantRole(ovl.DEFAULT_ADMIN_ROLE(), factory, {'from': gov_overlay})
+    governor_role = Web3.solidityKeccak(['string'], ["GOVERNOR"])
+    ovl.grantRole(governor_role, gov_overlay, {"from": gov_overlay})
+    guardian_role = Web3.solidityKeccak(['string'], ["GUARDIAN"])
+    ovl.grantRole(guardian_role, gov_overlay, {"from": gov_overlay})
 
     # Deploy Overlay inverse market
