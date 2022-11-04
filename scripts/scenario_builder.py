@@ -1,11 +1,12 @@
-from sqlite3 import paramstyle
 from brownie import (
-    Contract, network, accounts, OverlayV1Token, TestMintRouter,
-    OverlayV1UniswapV3Factory, OverlayV1Factory, OverlayV1UniswapV3Feed, USDC,
+    Contract, network, accounts, TestMintRouter,
+    OverlayV1UniswapV3Factory, OverlayV1Factory, OverlayV1UniswapV3Feed,
     OverlayV1Market, chain
 )
 from web3 import Web3
 import json
+import os
+from pathlib import Path
 
 
 def json_load(name):
@@ -13,26 +14,28 @@ def json_load(name):
     return json.load(f)
 
 
+def clear_contracts_file():
+    path = 'scripts/constants/overlay_contracts.json'
+    file = Path(path)
+    if file.exists():
+        os.remove('scripts/constants/overlay_contracts.json')
+
+
 def to_dict(name, address, abi):
     new_dict = {"address": address, "abi": abi}
-    with open('scripts/constants/contracts.json') as f:
-        full_dict = json.load(f)
-        full_dict[name] = new_dict
-    with open('scripts/constants/contracts.json', 'w') as f:
-        json.dump(full_dict, f)
-
-
-def create_ovl(gov, alice):
-    supply = 8000000
-    minter_role = Web3.solidityKeccak(['string'], ["MINTER"])
-    tok = gov.deploy(OverlayV1Token)
-    # mint the token then renounce minter role
-    tok.grantRole(minter_role, gov, {"from": gov})
-    tok.mint(gov, supply * 10 ** tok.decimals(), {"from": gov})
-    tok.renounceRole(minter_role, gov, {"from": gov})
-
-    tok.transfer(alice, (supply/2) * 10 ** tok.decimals(), {"from": gov})
-    return tok
+    path = 'scripts/constants/overlay_contracts.json'
+    file = Path(path)
+    if ~file.exists():
+        with open(path, 'w') as f:
+            d = {}
+            d[name] = new_dict
+            json.dump(d, f)
+    else:
+        with open(path) as f:
+            full_dict = json.load(f)
+            full_dict[name] = new_dict
+        with open(path, 'w') as f:
+            json.dump(full_dict, f)
 
 
 def lp(acc, pool, ovl, usdc, mint_router, amount, appr_reqd):
@@ -48,37 +51,31 @@ def swap(acc, pool, mint_router, ovl_to_usdc, amount):
     mint_router.swap(pool, ovl_to_usdc, amount, {'from': acc})
 
 
+def contract_obj(source, name):
+    return Contract.from_abi(name,
+                             source[name]['address'],
+                             source[name]['abi'])
+
+
 def main():
     print('Network: ', network.show_active())
+    clear_contracts_file()
+
+    # Get addresses
     gov_overlay = accounts[0]
     alice = accounts[1]
 
-    # Deploy OVL token
-    ovl = create_ovl(gov_overlay, alice)
-    to_dict('OVL', ovl.address, ovl.abi)
-    # Give Alice spot USDC tokens
-    usdc = USDC.deploy({'from': gov_overlay})
-    print(f'USDC created at {usdc.address}')
-    to_dict('USDC', usdc.address, usdc.abi)
-    usdc.grantRole(Web3.solidityKeccak(['string'], ["MINTER"]),
-                   gov_overlay.address, {'from': gov_overlay})
-    usdc.mint(alice, 1e9 * 1e18, {'from': gov_overlay})
-    print('Minted 1e9 tokens to input account')
+    # Get mainnet contract details
+    m_contracts = json_load('mainnet_contracts')
+    contracts = json_load('uniswap_setup_contracts')
 
-    # Deploy OVL/USDC Uniswap pool
-    contracts = json_load('contracts')
-    uni_factory = Contract\
-        .from_abi('uni_factory',
-                  contracts['uni_factory']['address'],
-                  contracts['uni_factory']['abi'])
-    tx = uni_factory.createPool(ovl, usdc, 3000, {"from": alice})
-    pool_add = tx.events['PoolCreated']['pool']
-    pool_abi = json_load('pool_abi')
-    pool = Contract.from_abi('pool', pool_add, pool_abi)
-    to_dict('inv_pool', pool_add, pool_abi)
-    pool.initialize(7.9220240490215315e28, {"from": alice})  # price ~= 1
-    pool.increaseObservationCardinalityNext(610, {"from": alice})
+    # Get contract objects
+    uni_factory = contract_obj(m_contracts, 'uni_factory')
+    ovl = contract_obj(contracts, 'OVL')
+    usdc = contract_obj(contracts, 'USDC')
+    pool = contract_obj(contracts, 'inv_pool')
 
+    # Provide liquidity on spot pool
     mint_router = alice.deploy(TestMintRouter)
     liquidity = 1e17
     lp(alice, pool, ovl, usdc, mint_router, liquidity, True)
@@ -89,6 +86,7 @@ def main():
     # Deploy Overlay Feed Factory, Feed, Factory
     feed_factory = gov_overlay.deploy(OverlayV1UniswapV3Factory, ovl,
                                       uni_factory, 600, 3600, 600, 12)
+    to_dict('feed_factory', feed_factory.address, feed_factory.abi)
 
     market_base_token = ovl
     market_quote_token = usdc
@@ -102,8 +100,10 @@ def main():
                                  market_fee)
     feed_addr = tx.events['FeedDeployed']['feed']
     feed = OverlayV1UniswapV3Feed.at(feed_addr)
+    to_dict('feed', feed.address, feed.abi)
 
     factory = gov_overlay.deploy(OverlayV1Factory, ovl, gov_overlay)
+    to_dict('factory', factory.address, factory.abi)
 
     # Deploy Overlay inverse market
     ovl.grantRole(ovl.DEFAULT_ADMIN_ROLE(), factory, {'from': gov_overlay})
@@ -130,8 +130,7 @@ def main():
         25000000000000,  # priceDriftUpperLimit
         12,  # averageBlockTime
     )
-    market_addr = factory.deployMarket(feed_factory, feed, params,
-                                       {'from': gov_overlay})
-    market = OverlayV1Market.at(market_addr)
-    asdf
-k
+    tx = factory.deployMarket(feed_factory, feed, params,
+                              {'from': gov_overlay})
+    market = OverlayV1Market.at(tx.events['MarketDeployed']['market'])
+    to_dict('market', market.address, market.abi)
