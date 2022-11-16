@@ -54,7 +54,6 @@ def lp(acc, pool, ovl, usdc, mint_router, amount, appr_reqd):
 
 def swap(acc, pool, mint_router, usdc_to_ovl, amount):
     tx = mint_router.swap(pool, usdc_to_ovl, amount, {'from': acc})
-    vals = tx.return_value
     if tx.events['Swap']['amount0'] > 0:
         return tx.events['Swap']['amount0']
     else:
@@ -79,7 +78,7 @@ def build_overlay_pos(market, ovl, col, is_long, acc):
     else:
         price = 0
     tx = market.build(col, 1e18, is_long, price, {'from': acc})
-    return tx.events['Build']['positionId']
+    return int(tx.events['Build']['positionId'])
 
 
 def main():
@@ -177,43 +176,60 @@ def main():
                                'usdc_amount',
                                'seconds'])
     chain.snapshot()
-    for ovl_in in range(50_000, 300_000, 50_000):
-        for usdc_in in range(100_000, 1_000_000, 100_000):
+    for ovl_in in range(50_000, 1_000_000, 100_000):
+        for usdc_in in range(100_000, 2_000_000, 150_000):
 
             pos_id = build_overlay_pos(market, ovl, ovl_in*1e18, False, alice)
 
-            # Swap ETH to OVL to pump spot OVL price
+            # Swap USDC to OVL to pump spot OVL price
             ovl_uni = swap(alice, pool, mint_router, True, usdc_in*1e18)
 
             # Wait for TWAP to catch up
-            for i in range(12, 7200, 12):
+            max_wait = 7200
+            for i in range(12, max_wait+12, 12):
                 o_contracts = json_load('overlay_contracts')
                 state = contract_obj(o_contracts, 'state')
                 curr_val =\
                     (state.value(market, alice, pos_id)/1e18
-                        + state.tradingFee(market, alice, pos_id)/1e18)
+                        - state.tradingFee(market, alice, pos_id)/1e18)
                 print(f'Input USDC: {usdc_in}')
                 print(f'Input OVL: {ovl_in}')
                 print(f'Current Value: {curr_val}')
                 print(f'Price: {(pool.slot0()[0]**2)/(2**(96*2))}')
                 print(f'Inverse price: {1/((pool.slot0()[0]**2)/(2**(96*2)))}')
                 print(f'Time: {i} secs')
-                if curr_val >= ovl_in:
-                    # tx = market.unwind(pos_id, 1e18,
-                    #                    (2**256)-1, {"from": alice})
+                if i == max_wait:
                     df.loc[len(df)] = [ovl_in, usdc_in, i]
+                    print('Reached max wait time!')
                     print('Exit loop!')
                     break
+                if curr_val >= ovl_in:
+                    try:
+                        tx = market.unwind(pos_id, 1e18,
+                                           (2**256)-1, {"from": alice})
+                        # w_market = web3.eth.contract(address=market.address,
+                        #                              abi=market.abi)
+                        # w_market.functions.unwind(pos_id, int(1e18),
+                        #                           (2**256)-1).call()
+                        print('Position profitable and unwound')
+                        df.loc[len(df)] = [ovl_in, usdc_in, i]
+                        print('Exit loop!')
+                        break
+                    except Exception as e:
+                        # err_msg = (e.args)[0]  # err_msg is a dict
+                        # revert_msg = err_msg['data']['stack']
+                        print('UNWIND REVERTED')
+                        print(e)
+                        # print(revert_msg)
+                        # if 'OVLV1:!data' in revert_msg:
+                        #     print("Unwind reverts with 'OVLV1:!data'")
+                        chain.mine(timedelta=12)
+                        continue
+                    # tx = market.unwind(pos_id, 1e18,
+                    #                    (2**256)-1, {"from": alice})
                     # ovl_ovl = tx.events['Transfer'][1]['value']/1e18
                     # usdc_out = swap(alice, pool, mint_router, False, ovl_ovl)
                 else:
-                    chain.mine(timedelta=i)  # 12 secs per block on ETH2.0
+                    chain.mine(timedelta=12)  # 12 secs per block on ETH2.0
             chain.revert()
     asdf
-
-
-
-            
-
-
-    # Unwind long and swap out OVL for ETH
