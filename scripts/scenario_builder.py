@@ -174,62 +174,54 @@ def main():
     # Open short on inverse market
     df = pd.DataFrame(columns=['ovl_amount',
                                'usdc_amount',
-                               'seconds'])
+                               'seconds',
+                               'value',
+                               'unwindable'])
     chain.snapshot()
-    for ovl_in in range(50_000, 1_000_000, 100_000):
-        for usdc_in in range(100_000, 2_000_000, 150_000):
+    for ovl_in in range(5_000, 100_000, 10_000):
+        for usdc_in in range(500_000, 1_000_000, 150_000):
 
             pos_id = build_overlay_pos(market, ovl, ovl_in*1e18, False, alice)
 
             # Swap USDC to OVL to pump spot OVL price
-            ovl_uni = swap(alice, pool, mint_router, True, usdc_in*1e18)
+            _ = swap(alice, pool, mint_router, True, usdc_in*1e18)
 
             # Wait for TWAP to catch up
+            prev_block = chain.height
             max_wait = 7200
+            chain.mine(blocks=int(max_wait/12), timedelta=max_wait)
             for i in range(12, max_wait+12, 12):
                 o_contracts = json_load('overlay_contracts')
                 state = contract_obj(o_contracts, 'state')
+                b = prev_block + int(i/12)
                 curr_val =\
-                    (state.value(market, alice, pos_id)/1e18
-                        - state.tradingFee(market, alice, pos_id)/1e18)
+                    (state.value(
+                        market, alice, pos_id, block_identifier=b)/1e18
+                        - state.tradingFee(
+                            market, alice, pos_id, block_identifier=b)/1e18)
+                unwindable = market.dataIsValid(
+                    state.data(feed, block_identifier=b), block_identifier=b)
                 print(f'Input USDC: {usdc_in}')
                 print(f'Input OVL: {ovl_in}')
                 print(f'Current Value: {curr_val}')
+                print(f'Unwindable: {unwindable}')
                 print(f'Price: {(pool.slot0()[0]**2)/(2**(96*2))}')
                 print(f'Inverse price: {1/((pool.slot0()[0]**2)/(2**(96*2)))}')
                 print(f'Time: {i} secs')
+                df.loc[len(df)] = [ovl_in, usdc_in, i, curr_val, unwindable]
                 if i == max_wait:
-                    df.loc[len(df)] = [ovl_in, usdc_in, i]
                     print('Reached max wait time!')
                     print('Exit loop!')
                     break
-                if curr_val >= ovl_in:
-                    try:
-                        tx = market.unwind(pos_id, 1e18,
-                                           (2**256)-1, {"from": alice})
-                        # w_market = web3.eth.contract(address=market.address,
-                        #                              abi=market.abi)
-                        # w_market.functions.unwind(pos_id, int(1e18),
-                        #                           (2**256)-1).call()
-                        print('Position profitable and unwound')
-                        df.loc[len(df)] = [ovl_in, usdc_in, i]
-                        print('Exit loop!')
-                        break
-                    except Exception as e:
-                        # err_msg = (e.args)[0]  # err_msg is a dict
-                        # revert_msg = err_msg['data']['stack']
-                        print('UNWIND REVERTED')
-                        print(e)
-                        # print(revert_msg)
-                        # if 'OVLV1:!data' in revert_msg:
-                        #     print("Unwind reverts with 'OVLV1:!data'")
-                        chain.mine(timedelta=12)
-                        continue
-                    # tx = market.unwind(pos_id, 1e18,
-                    #                    (2**256)-1, {"from": alice})
-                    # ovl_ovl = tx.events['Transfer'][1]['value']/1e18
-                    # usdc_out = swap(alice, pool, mint_router, False, ovl_ovl)
-                else:
-                    chain.mine(timedelta=12)  # 12 secs per block on ETH2.0
+                if (curr_val >= ovl_in) and unwindable:
+                    print('Position profitable and unwindable')
+                    print('Confirm by actually unwinding')
+                    chain.undo()  # undo the max_wait mining above
+                    chain.mine(timedelta=i)  # mine to block where profitable
+                    tx = market.unwind(pos_id, 1e18,
+                                       (2**256)-1, {"from": alice})
+                    print('Position unwound successfully')
+                    print('Exit loop!')
+                    break
+            df.to_csv('csv/results.csv')
             chain.revert()
-    asdf
