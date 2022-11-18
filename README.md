@@ -31,7 +31,7 @@ Set up Uniswap pool before running scenarios (this is done separately because it
 
 - Open a terminal and run:
 ```
-ganache-cli --accounts 10 --hardfork istanbul --fork https://mainnet.infura.io/v3/802549d59448465f94f2a48dbefb245c --gasLimit 9007199254740991 --mnemonic brownie --port 8545 --chainId 1 --db ganache-db/uniswap-setup
+ganache-cli --accounts 10 --hardfork istanbul --fork https://mainnet.infura.io/v3/INFURA_KEY --gasLimit 9007199254740991 --mnemonic brownie --port 8545 --chainId 1 --db ganache-db/uniswap-setup
 ```
 - Open another terminal and run:
 ```
