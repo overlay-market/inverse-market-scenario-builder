@@ -179,7 +179,7 @@ def main():
                                'unwindable'])
     chain.snapshot()
     for ovl_in in range(5_000, 100_000, 10_000):
-        for usdc_in in range(500_000, 1_000_000, 150_000):
+        for usdc_in in range(100_000, 700_000, 100_000):
 
             pos_id = build_overlay_pos(market, ovl, ovl_in*1e18, False, alice)
 

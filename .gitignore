@@ -6,3 +6,4 @@ reports/
 .env
 ganache-db/
 notes
+csv/
