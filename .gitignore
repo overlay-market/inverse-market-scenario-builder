@@ -1,6 +1,9 @@
+build/
+__pycache__/
+node_modules/
+.history
+reports/
 .env
 ganache-db/
-csv/
-build/
 notes
-scripts/__pycache__
+csv/

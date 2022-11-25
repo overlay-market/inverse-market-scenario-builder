@@ -1,7 +1,3 @@
-# use Ganache's forked mainnet mode as the default network
-networks:
-  default: mainnet-fork
-
 # automatically fetch contract sources from Etherscan
 autofetch_sources: True
 
@@ -12,6 +8,8 @@ dotenv: .env
 dependencies:
   - OpenZeppelin/openzeppelin-contracts@4.5.0
   - Uniswap/v3-core@1.0.0
+  - overlay-market/v1-core@1.0.0-rc.0
+  - Uniswap/v3-periphery@1.0.0
 
 # path remapping to support imports from GitHub/NPM
 compiler:
@@ -22,3 +20,5 @@ compiler:
     remappings:
       - "@openzeppelin=OpenZeppelin/openzeppelin-contracts@4.5.0"
       - "@uniswap/v3-core=Uniswap/v3-core@1.0.0"
+      - "@overlay-protocol/v1-core=overlay-market/v1-core@1.0.0-rc.0"
+      - "@uniswap/v3-periphery=Uniswap/v3-periphery@1.0.0"
