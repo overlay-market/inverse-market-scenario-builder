@@ -1,0 +1,6 @@
+.env
+ganache-db/
+csv/
+build/
+notes
+scripts/__pycache__
