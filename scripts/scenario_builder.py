@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from math import ceil
 import pandas as pd
+import numpy as np
 
 
 def json_load(name):
@@ -145,9 +146,9 @@ def main():
 
     factory.addFeedFactory(feed_factory, {'from': gov_overlay})
     params = (
-        122000000000,  # k
-        500000000000000000,  # lmbda
-        2500000000000000,  # delta
+        279104614456,  # k
+        613091000000000000,  # lmbda
+        3510000000000000,  # delta
         5000000000000000000,  # capPayoff
         800000000000000000000000,  # capNotional
         1000000000000000000,  # capLeverage
@@ -158,7 +159,7 @@ def main():
         50000000000000000,  # liquidationFeeRate
         750000000000000,  # tradingFeeRate
         100000000000000,  # minCollateral
-        25000000000000,  # priceDriftUpperLimit
+        100000000000000,  # priceDriftUpperLimit (50% price move)
         12,  # averageBlockTime
     )
     tx = factory.deployMarket(feed_factory, feed, params,
@@ -178,8 +179,13 @@ def main():
                                'value',
                                'unwindable'])
     chain.snapshot()
-    for ovl_in in range(5_000, 100_000, 10_000):
-        for usdc_in in range(100_000, 700_000, 100_000):
+    ovl_range = np.append(
+        np.array([10, 50, 100, 500, 1000, 2500, 5000]),
+        np.arange(10_000, 220_000, 20_000)
+    )
+    usdc_range = np.arange(100_000, 1_500_000, 150_000)
+    for ovl_in in list(ovl_range):
+        for usdc_in in list(usdc_range):
 
             pos_id = build_overlay_pos(market, ovl, ovl_in*1e18, False, alice)
 
@@ -223,5 +229,5 @@ def main():
                     print('Position unwound successfully')
                     print('Exit loop!')
                     break
-            df.to_csv('csv/results.csv')
+            df.to_csv('csv/results_w_params.csv')
             chain.revert()
