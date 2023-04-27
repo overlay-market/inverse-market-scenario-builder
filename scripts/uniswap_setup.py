@@ -83,5 +83,11 @@ def main():
     pool = Contract.from_abi('pool', pool_add, pool_abi)
     to_dict('inv_pool', pool_add, pool_abi)
     pool.initialize(7.9220240490215315e28, {"from": alice})  # price ~= 1
+    # If facing a timeout error at `increaseObservationCardinalityNext`,
+    # consider changing `timeout` value to 600 here:
+    # https://github.com/eth-brownie/brownie/blob/86258c7bdf194c800ae44e853b7c55fab60a23ce/brownie/network/main.py#L40
+    # It doesn't seem like there is a better way to do this, since this issue
+    # is still open:
+    # https://github.com/eth-brownie/brownie/issues/600
     pool.increaseObservationCardinalityNext(610, {"from": alice})
     print('Complete!')
